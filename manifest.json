@@ -1,7 +1,7 @@
 {
   "id": "hunyuan3d-mv",
   "name": "Hunyuan3D 2 Multiview",
-  "description": "Tencent's Hunyuan3D-2mv pipeline. Accepts multiple reference images (front / back / left / right) per generation for higher-fidelity mesh reconstruction than the single-image mini model.",
+  "description": "Tencent's Hunyuan3D-2mv pipeline. Accepts multiple reference images (front, back, left, right) per generation for higher-fidelity mesh reconstruction than the single-image mini model.",
   "version": "0.1.0",
   "type": "model",
   "author": "community-fork (based on lightningpixel/modly-hunyuan3d-mini-extension)",
@@ -11,7 +11,8 @@
   },
   "entry": {
     "setup": "setup.py",
-    "generator": "generator.py"
+    "generator": "generator.py",
+    "generator_class": "Hunyuan3DMultiviewGenerator"
   },
   "input": {
     "type": "multi_image",
