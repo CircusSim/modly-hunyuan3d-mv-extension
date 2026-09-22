@@ -16,6 +16,7 @@ instead of argv parsing).
 import json
 import os
 import platform
+import shutil
 import subprocess
 import sys
 import venv
@@ -42,6 +43,40 @@ def _run(cmd, **kwargs):
     subprocess.run(cmd, check=True, **kwargs)
 
 
+def _fix_venv_shared_libs():
+    """
+    On Linux/macOS, the venv's python binary is a symlink to the base
+    interpreter and relies on a relative RPATH (typically $ORIGIN/../lib)
+    to find libpython*.so at runtime. venv.EnvBuilder does NOT copy that
+    shared library into the new venv, so the binary fails with
+    "error while loading shared libraries" the moment you try to run it --
+    it's looking for <venv>/lib/libpython3.11.so.1.0 and finding nothing.
+
+    Fix: copy (symlink where possible) the actual .so file from the base
+    interpreter's lib dir into <venv>/lib, so it's sitting exactly where
+    the binary already expects it.
+    """
+    if platform.system() == "Windows":
+        return
+
+    base_python = Path(sys.executable).resolve()
+    base_lib_dir = base_python.parent.parent / "lib"
+    if not base_lib_dir.exists():
+        return
+
+    venv_lib_dir = VENV_DIR / "lib"
+    venv_lib_dir.mkdir(parents=True, exist_ok=True)
+
+    for so_file in base_lib_dir.glob("libpython*.so*"):
+        target = venv_lib_dir / so_file.name
+        if target.exists():
+            continue
+        try:
+            target.symlink_to(so_file)
+        except OSError:
+            shutil.copy2(so_file, target)
+
+
 def _create_venv():
     """
     Create the venv WITHOUT letting venv.EnvBuilder try to bootstrap pip
@@ -50,14 +85,15 @@ def _create_venv():
     don't ship ensurepip, so `venv.EnvBuilder(with_pip=True)` fails with
     a nested "command not found" (exit 127) when it tries to invoke it.
 
-    Instead: create a pip-less venv, then bootstrap pip manually via
-    get-pip.py, which only needs a working Python interpreter -- no
-    ensurepip module required.
+    Instead: create a pip-less venv, fix up the shared-library path issue
+    (see _fix_venv_shared_libs), then bootstrap pip manually via
+    get-pip.py.
     """
     if VENV_DIR.exists():
         return
 
     venv.EnvBuilder(with_pip=False).create(str(VENV_DIR))
+    _fix_venv_shared_libs()
 
     python = str(_venv_python())
     get_pip_path = EXTENSION_DIR / "get-pip.py"
