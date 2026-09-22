@@ -1,35 +1,76 @@
 {
   "id": "hunyuan3d-mv",
   "name": "Hunyuan3D 2 Multiview",
+  "type": "model",
+  "source": "https://github.com/CircusSim/modly-hunyuan3d-mv-extension",
   "description": "Tencent's Hunyuan3D-2mv pipeline. Accepts multiple reference images (front, back, left, right) per generation for higher-fidelity mesh reconstruction than the single-image mini model.",
   "version": "0.1.0",
-  "type": "model",
-  "author": "community-fork (based on lightningpixel/modly-hunyuan3d-mini-extension)",
-  "upstream": {
-    "project": "Tencent/Hunyuan3D-2",
-    "weights": "tencent/Hunyuan3D-2mv"
-  },
-  "entry": {
-    "setup": "setup.py",
-    "generator": "generator.py",
-    "generator_class": "Hunyuan3DMultiviewGenerator"
-  },
-  "input": {
-    "type": "multi_image",
-    "min_images": 1,
-    "max_images": 4,
-    "slots": ["front", "back", "left", "right"],
-    "slot_required": ["front"],
-    "notes": "front is mandatory; back/left/right are optional but each additional view materially improves geometry on non-symmetric objects."
-  },
-  "capabilities": {
-    "shape_generation": true,
-    "texture_generation": "optional_if_native_ext_available",
-    "multiview_conditioning": true
-  },
-  "requirements": {
-    "gpu_sm": ">=70",
-    "vram_gb_min": 10,
-    "vram_gb_recommended": 16
-  }
+  "author": "community-fork (based on lightningpixel/modly-hunyuan3d-mini-turbo-extension)",
+  "generator_class": "Hunyuan3DMultiviewGenerator",
+  "tags": [
+    "image-to-3d",
+    "multiview",
+    "multi-image"
+  ],
+  "nodes": [
+    {
+      "id": "generate",
+      "name": "Generate Mesh (Multiview)",
+      "input": "images",
+      "output": "mesh",
+      "hf_repo": "tencent/Hunyuan3D-2mv",
+      "download_check": "hunyuan3d-dit-v2-mv",
+      "hf_skip_prefixes": [
+        "hunyuan3d-dit-v2-mini/",
+        "hunyuan3d-dit-v2-mini-fast/",
+        "hunyuan3d-dit-v2-mini-turbo/",
+        "hunyuan3d-vae-v2-mini-withencoder/"
+      ],
+      "params_schema": [
+        {
+          "id": "num_inference_steps",
+          "label": "Quality",
+          "type": "select",
+          "default": 30,
+          "options": [
+            { "value": 15, "label": "Fast" },
+            { "value": 30, "label": "Balanced" },
+            { "value": 50, "label": "High" }
+          ],
+          "tooltip": "Number of diffusion steps. More steps = better quality but slower."
+        },
+        {
+          "id": "octree_resolution",
+          "label": "Mesh Resolution",
+          "type": "select",
+          "default": 380,
+          "options": [
+            { "value": 256, "label": "Low" },
+            { "value": 380, "label": "Medium" },
+            { "value": 512, "label": "High" }
+          ],
+          "tooltip": "Octree resolution for mesh reconstruction. Higher = more detail but slower and more VRAM."
+        },
+        {
+          "id": "guidance_scale",
+          "label": "Guidance Scale",
+          "type": "float",
+          "default": 5.0,
+          "min": 1,
+          "max": 10,
+          "step": 0.5,
+          "tooltip": "Classifier-free guidance strength. Higher = closer to the input images."
+        },
+        {
+          "id": "seed",
+          "label": "Seed",
+          "type": "int",
+          "default": -1,
+          "min": -1,
+          "max": 4294967295,
+          "tooltip": "Seed for reproducibility. Set to -1 for a random seed."
+        }
+      ]
+    }
+  ]
 }
