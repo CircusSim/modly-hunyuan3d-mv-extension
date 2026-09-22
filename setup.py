@@ -42,6 +42,36 @@ def _run(cmd, **kwargs):
     subprocess.run(cmd, check=True, **kwargs)
 
 
+def _create_venv():
+    """
+    Create the venv WITHOUT letting venv.EnvBuilder try to bootstrap pip
+    itself. Some embedded/minimal Python builds (e.g. stripped-down
+    python-build-standalone distributions, which is what Modly bundles)
+    don't ship ensurepip, so `venv.EnvBuilder(with_pip=True)` fails with
+    a nested "command not found" (exit 127) when it tries to invoke it.
+
+    Instead: create a pip-less venv, then bootstrap pip manually via
+    get-pip.py, which only needs a working Python interpreter -- no
+    ensurepip module required.
+    """
+    if VENV_DIR.exists():
+        return
+
+    venv.EnvBuilder(with_pip=False).create(str(VENV_DIR))
+
+    python = str(_venv_python())
+    get_pip_path = EXTENSION_DIR / "get-pip.py"
+
+    print("[setup] ensurepip unavailable in embedded Python -- bootstrapping pip via get-pip.py")
+    import urllib.request
+    urllib.request.urlretrieve("https://bootstrap.pypa.io/get-pip.py", str(get_pip_path))
+
+    try:
+        _run([python, str(get_pip_path), "--no-warn-script-location"])
+    finally:
+        get_pip_path.unlink(missing_ok=True)
+
+
 def _torch_index_for(cuda_version: int | None, is_arm64: bool, is_linux: bool) -> str:
     # CUDA 12.8+ path (mirrors the ARM64 handling called out in the mini
     # extension's README); falls back to a generic recent CUDA wheel index
@@ -73,9 +103,8 @@ def setup(platform_info: dict):
 
     print(f"[setup] gpu_sm={gpu_sm} cuda_version={cuda_version} os={os_name} arch={arch}")
 
-    # 1. Create venv
-    if not VENV_DIR.exists():
-        venv.EnvBuilder(with_pip=True).create(str(VENV_DIR))
+    # 1. Create venv (pip bootstrapped manually -- see _create_venv)
+    _create_venv()
 
     pip = str(_venv_pip())
 
@@ -84,9 +113,23 @@ def setup(platform_info: dict):
     _run([pip, "install", "--timeout", "120", "--retries", "5",
           "torch", "torchvision", "--index-url", torch_index])
 
-    # 3. Install Hunyuan3D-2 (hy3dgen) + shape/texture deps
-    _run([pip, "install", "--timeout", "120", "--retries", "5",
-          "git+https://github.com/Tencent/Hunyuan3D-2.git"])
+    # 3. Install Hunyuan3D-2 (hy3dgen) + shape/texture deps.
+    #    Installed from a downloaded zip rather than `pip install git+...`
+    #    so this doesn't depend on a system git binary being present/on
+    #    PATH (hit on at least one Windows machine during testing).
+    import urllib.request
+    import zipfile
+    import tempfile
+
+    zip_url = "https://github.com/Tencent/Hunyuan3D-2/archive/refs/heads/main.zip"
+    with tempfile.TemporaryDirectory() as tmp:
+        zip_path = Path(tmp) / "hunyuan3d-2.zip"
+        print(f"[setup] downloading {zip_url}")
+        urllib.request.urlretrieve(zip_url, str(zip_path))
+        with zipfile.ZipFile(zip_path) as zf:
+            zf.extractall(tmp)
+        extracted = next(Path(tmp).glob("Hunyuan3D-2-*"))
+        _run([pip, "install", "--timeout", "120", "--retries", "5", str(extracted)])
 
     # 4. Background removal -- GPU build where available, ARM64 falls back
     #    to CPU onnxruntime per the mini extension's platform notes.
